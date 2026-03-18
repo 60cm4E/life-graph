@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인생그래프 — Life Graph</title>
+    <meta name="description" content="신체, 영적, 정서적 변화를 나이별로 시각화하는 인터랙티브 인생그래프">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <!-- Drag Data Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@2.3.0/dist/chartjs-plugin-dragdata.min.js"></script>
+    <!-- Annotation Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <!-- html2canvas -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+</head>
+<body>
+    <!-- ===== HEADER ===== -->
+    <header id="app-header">
+        <div class="header-inner">
+            <div class="logo-area">
+                <span class="logo-icon">📈</span>
+                <h1>인생그래프</h1>
+            </div>
+            <button id="theme-toggle" class="btn-icon" aria-label="테마 전환">
+                <span class="theme-icon-dark">🌙</span>
+                <span class="theme-icon-light">☀️</span>
+            </button>
+        </div>
+    </header>
+
+    <main id="app-main">
+        <!-- ===== USER INFO ===== -->
+        <section id="user-info-section" class="glass-card">
+            <h2>👤 사용자 정보</h2>
+            <form id="user-info-form" class="inline-form">
+                <div class="form-group">
+                    <label for="user-name">이름</label>
+                    <input type="text" id="user-name" placeholder="이름을 입력하세요" required>
+                </div>
+                <div class="form-group">
+                    <label for="user-age">현재 나이</label>
+                    <input type="number" id="user-age" min="1" max="120" placeholder="나이" required>
+                </div>
+                <button type="submit" id="btn-generate" class="btn-primary">
+                    <span>그래프 생성</span>
+                    <span class="btn-shine"></span>
+                </button>
+            </form>
+        </section>
+
+        <!-- ===== CHART AREA ===== -->
+        <section id="chart-section" class="glass-card hidden">
+            <div class="section-header">
+                <h2>📊 인생그래프 — <span id="chart-user-name"></span></h2>
+                <div class="input-mode-tabs">
+                    <button class="tab-btn active" data-mode="drag" id="tab-drag">🖱️ 드래그</button>
+                    <button class="tab-btn" data-mode="form" id="tab-form">📝 폼 입력</button>
+                </div>
+            </div>
+            <div id="chart-container">
+                <canvas id="life-chart"></canvas>
+            </div>
+            <!-- Form Input Panel -->
+            <div id="form-input-panel" class="sub-panel hidden">
+                <h3>폼 입력 모드</h3>
+                <div class="form-input-row">
+                    <div class="form-group">
+                        <label for="form-age-select">나이</label>
+                        <select id="form-age-select"></select>
+                    </div>
+                    <div class="form-group slider-group">
+                        <label for="slider-physical">🏃 신체 <span id="val-physical" class="slider-val">0</span></label>
+                        <input type="range" id="slider-physical" min="-100" max="100" value="0" class="range-physical">
+                    </div>
+                    <div class="form-group slider-group">
+                        <label for="slider-spiritual">🙏 영적 <span id="val-spiritual" class="slider-val">0</span></label>
+                        <input type="range" id="slider-spiritual" min="-100" max="100" value="0" class="range-spiritual">
+                    </div>
+                    <div class="form-group slider-group">
+                        <label for="slider-emotional">💛 정서 <span id="val-emotional" class="slider-val">0</span></label>
+                        <input type="range" id="slider-emotional" min="-100" max="100" value="0" class="range-emotional">
+                    </div>
+                    <button id="btn-apply-form" class="btn-secondary">적용</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== EVENT INPUT ===== -->
+        <section id="event-section" class="glass-card hidden">
+            <h2>🏷️ 인생 이벤트</h2>
+            <form id="event-form" class="inline-form">
+                <div class="form-group">
+                    <label for="event-age">나이</label>
+                    <input type="number" id="event-age" min="0" max="120" placeholder="나이">
+                </div>
+                <div class="form-group">
+                    <label for="event-title">이벤트명</label>
+                    <input type="text" id="event-title" placeholder="예: 대학 입학">
+                </div>
+                <div class="form-group">
+                    <label for="event-memo">메모</label>
+                    <input type="text" id="event-memo" placeholder="간단한 메모 (선택)">
+                </div>
+                <button type="submit" class="btn-primary">
+                    <span>추가</span>
+                </button>
+            </form>
+        </section>
+
+        <!-- ===== TIMELINE ===== -->
+        <section id="timeline-section" class="glass-card hidden">
+            <h2>📅 타임라인</h2>
+            <div id="timeline-container"></div>
+            <p id="timeline-empty" class="empty-msg">아직 등록된 이벤트가 없습니다.</p>
+        </section>
+
+        <!-- ===== ACTION BUTTONS ===== -->
+        <section id="action-section" class="glass-card hidden">
+            <h2>⚡ 액션</h2>
+            <div class="action-buttons">
+                <button id="btn-save" class="btn-action">💾 저장</button>
+                <button id="btn-load" class="btn-action">📂 불러오기</button>
+                <button id="btn-export-img" class="btn-action">🖼️ 이미지 내보내기</button>
+                <button id="btn-export-json" class="btn-action">📄 JSON 내보내기</button>
+                <button id="btn-import-json" class="btn-action">📥 JSON 가져오기</button>
+                <input type="file" id="json-file-input" accept=".json" class="hidden">
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>인생그래프 &copy; 2026</p>
+    </footer>
+
+    <script src="js/storage.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/events.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
