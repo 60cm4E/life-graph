@@ -608,6 +608,139 @@ input[type="range"]::-webkit-slider-thumb:active {
     padding: 16px;
 }
 
+/* ===== POINT TOOLBAR ===== */
+.point-toolbar {
+    margin-bottom: 16px;
+    padding: 16px;
+    border-radius: var(--radius-sm);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+}
+
+.add-point-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.add-point-row label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.add-point-input-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.add-point-input-group input[type="number"] {
+    width: 80px;
+    padding: 10px 12px;
+    text-align: center;
+    font-size: 1rem;
+}
+
+.add-point-suffix {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.btn-add-point {
+    padding: 10px 20px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--font-family);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+    white-space: nowrap;
+}
+
+.btn-add-point:hover {
+    background: var(--accent-secondary);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+.btn-add-point:active {
+    transform: translateY(0);
+}
+
+.point-list {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.point-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 20px;
+    background: var(--btn-bg);
+    border: 1px solid var(--input-border);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all var(--transition);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.point-chip:hover {
+    border-color: var(--accent);
+    background: var(--btn-hover-bg);
+}
+
+.point-chip-age {
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 0.85rem;
+}
+
+.point-chip-vals {
+    display: flex;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.point-chip-delete {
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition);
+    flex-shrink: 0;
+}
+
+.point-chip-delete:hover {
+    background: rgba(239, 68, 68, 0.35);
+    transform: scale(1.15);
+}
+
+.point-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
 /* ===== FOOTER ===== */
 footer {
     text-align: center;
@@ -701,6 +834,46 @@ footer {
 
     .slider-group {
         min-width: 100%;
+    }
+
+    .point-toolbar {
+        padding: 12px;
+    }
+
+    .add-point-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .add-point-input-group {
+        width: 100%;
+    }
+
+    .add-point-input-group input[type="number"] {
+        flex: 1;
+    }
+
+    .btn-add-point {
+        flex-shrink: 0;
+    }
+
+    .point-chip {
+        padding: 10px 14px;
+        font-size: 0.85rem;
+    }
+
+    .point-chip-delete {
+        width: 28px;
+        height: 28px;
+        font-size: 0.85rem;
+    }
+
+    /* Always show delete on touch devices */
+    .timeline-delete {
+        opacity: 1;
+        width: 32px;
+        height: 32px;
     }
 }
 

@@ -5,7 +5,7 @@
 // ===== Global State =====
 const AppState = {
     userInfo: { name: '', age: 0 },
-    graphData: { labels: [], physical: [], spiritual: [], emotional: [] },
+    graphData: { points: [] },
     events: []
 };
 
@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initUserForm();
     initInputModeTabs();
     initFormInput();
+    initAddPoint();
     initEventForm();
     initActionButtons();
 
@@ -59,7 +60,7 @@ function initUserForm() {
         }
 
         AppState.userInfo = { name, age };
-        AppState.graphData = { labels: [], physical: [], spiritual: [], emotional: [] };
+        AppState.graphData = { points: [] };
         AppState.events = [];
 
         document.getElementById('chart-user-name').textContent = name;
@@ -118,24 +119,46 @@ function initFormInput() {
         const s = parseInt(sliderSpir.value);
         const e = parseInt(sliderEmot.value);
         LifeChart.updatePointFromForm(idx, p, s, e);
-        showToast(`✅ ${AppState.graphData.labels[idx]}세 값 적용됨`);
+        const point = AppState.graphData.points[idx];
+        if (point) showToast(`✅ ${point.age}세 값 적용됨`);
     });
 }
 
 function updateFormSliders() {
     const idx = parseInt(document.getElementById('form-age-select').value);
-    if (isNaN(idx)) return;
+    if (isNaN(idx) || !AppState.graphData.points[idx]) return;
 
-    const p = AppState.graphData.physical[idx] || 0;
-    const s = AppState.graphData.spiritual[idx] || 0;
-    const e = AppState.graphData.emotional[idx] || 0;
+    const pt = AppState.graphData.points[idx];
+    document.getElementById('slider-physical').value = pt.physical;
+    document.getElementById('slider-spiritual').value = pt.spiritual;
+    document.getElementById('slider-emotional').value = pt.emotional;
+    document.getElementById('val-physical').textContent = pt.physical;
+    document.getElementById('val-spiritual').textContent = pt.spiritual;
+    document.getElementById('val-emotional').textContent = pt.emotional;
+}
 
-    document.getElementById('slider-physical').value = p;
-    document.getElementById('slider-spiritual').value = s;
-    document.getElementById('slider-emotional').value = e;
-    document.getElementById('val-physical').textContent = p;
-    document.getElementById('val-spiritual').textContent = s;
-    document.getElementById('val-emotional').textContent = e;
+// ===== Add Point =====
+function initAddPoint() {
+    document.getElementById('btn-add-point').addEventListener('click', () => {
+        const ageInput = document.getElementById('add-point-age');
+        const age = parseInt(ageInput.value);
+
+        if (isNaN(age) || age < 0 || age > AppState.userInfo.age) {
+            showToast(`⚠️ 0~${AppState.userInfo.age} 사이 나이를 입력해주세요`);
+            return;
+        }
+
+        LifeChart.addPoint(age, 0, 0, 0);
+        ageInput.value = '';
+    });
+
+    // Also allow Enter key
+    document.getElementById('add-point-age').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById('btn-add-point').click();
+        }
+    });
 }
 
 // ===== Event Form =====

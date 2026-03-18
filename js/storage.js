@@ -46,7 +46,23 @@ const Storage = (() => {
             return false;
         }
         AppState.userInfo = data.userInfo;
-        AppState.graphData = data.graphData;
+
+        // Migrate old format (labels/physical/spiritual/emotional arrays) to new format (points)
+        if (data.graphData.labels && !data.graphData.points) {
+            const points = [];
+            for (let i = 0; i < data.graphData.labels.length; i++) {
+                points.push({
+                    age: data.graphData.labels[i],
+                    physical: data.graphData.physical[i] || 0,
+                    spiritual: data.graphData.spiritual[i] || 0,
+                    emotional: data.graphData.emotional[i] || 0
+                });
+            }
+            AppState.graphData = { points };
+        } else {
+            AppState.graphData = data.graphData;
+        }
+
         AppState.events = data.events || [];
 
         // Update UI
