@@ -1,6 +1,7 @@
 /* ===================================================
    chart.js — Scatter-Line Chart with flexible data points
    Supports: drag editing (both axes), add/remove points
+   PC: mouse drag, Mobile: touch & drag
    =================================================== */
 
 const LifeChart = (() => {
@@ -8,8 +9,6 @@ const LifeChart = (() => {
     let isDragging = false;
     let dragDatasetIdx = -1;
     let dragPointIdx = -1;
-    let dragStartPos = null;
-    let selectedPoint = { datasetIdx: -1, pointIdx: -1 };
 
     function getThemeColors() {
         const style = getComputedStyle(document.documentElement);
@@ -178,21 +177,16 @@ const LifeChart = (() => {
                             }
                         }
                     },
-                    dragData: false, // We handle drag ourselves
+                    dragData: false,
                     annotation: {
                         annotations: {}
                     }
                 },
-                // Disable default drag on mobile
-                events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove', 'touchend'],
             },
-            plugins: [{
-                id: 'customDrag',
-                beforeEvent(chart, args) {
-                    handleChartEvent(chart, args.event);
-                }
-            }]
         });
+
+        // Bind direct canvas event listeners for drag
+        bindCanvasDrag(chart);
 
         // Populate age select for form input
         populateAgeSelect();
@@ -211,62 +205,261 @@ const LifeChart = (() => {
         AppState.graphData.points.sort((a, b) => a.age - b.age);
     }
 
-    // ===== Custom Drag Handling (supports both axes) =====
-    function handleChartEvent(ch, evt) {
-        const type = evt.type;
+    // ===== Direct Canvas Drag + Add/Remove Gestures =====
+    function bindCanvasDrag(ch) {
         const canvas = ch.canvas;
-        const rect = canvas.getBoundingClientRect();
 
-        if (type === 'mousedown' || type === 'touchstart') {
-            const hit = findNearestPoint(ch, evt);
+        // Prevent any existing listeners (in case of re-create)
+        canvas._dragCleanup && canvas._dragCleanup();
+
+        let longPressTimer = null;
+        let longPressTriggered = false;
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            if (e.touches && e.touches.length > 0) {
+                return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+            }
+            if (e.changedTouches && e.changedTouches.length > 0) {
+                return { x: e.changedTouches[0].clientX - rect.left, y: e.changedTouches[0].clientY - rect.top };
+            }
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+
+        function findHit(pos) {
+            const hitRadius = 20;
+            for (let dsIdx = 0; dsIdx < ch.data.datasets.length; dsIdx++) {
+                const meta = ch.getDatasetMeta(dsIdx);
+                for (let ptIdx = 0; ptIdx < meta.data.length; ptIdx++) {
+                    const el = meta.data[ptIdx];
+                    const dx = pos.x - el.x;
+                    const dy = pos.y - el.y;
+                    if (Math.sqrt(dx * dx + dy * dy) <= hitRadius) {
+                        return { datasetIndex: dsIdx, index: ptIdx };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function posToChartValues(pos) {
+            const xScale = ch.scales.x;
+            const yScale = ch.scales.y;
+            let age = Math.round(xScale.getValueForPixel(pos.x));
+            let val = Math.round(yScale.getValueForPixel(pos.y));
+            age = Math.max(0, Math.min(AppState.userInfo.age, age));
+            val = Math.max(-100, Math.min(100, val));
+            return { age, val };
+        }
+
+        function isInChartArea(pos) {
+            const area = ch.chartArea;
+            return pos.x >= area.left && pos.x <= area.right && pos.y >= area.top && pos.y <= area.bottom;
+        }
+
+        // ── Drag ──
+        function onStart(e) {
+            longPressTriggered = false;
+            const pos = getPos(e);
+            const hit = findHit(pos);
+
+            // Start long-press timer for touch (delete gesture)
+            if (e.touches && hit) {
+                longPressTimer = setTimeout(() => {
+                    longPressTriggered = true;
+                    isDragging = false;
+                    const pt = AppState.graphData.points[hit.index];
+                    if (pt) {
+                        showDeleteConfirm(pt.age, e);
+                    }
+                }, 500);
+            }
+
             if (hit) {
                 isDragging = true;
                 dragDatasetIdx = hit.datasetIndex;
                 dragPointIdx = hit.index;
-                dragStartPos = { x: evt.x, y: evt.y };
                 canvas.style.cursor = 'grabbing';
-                evt.native && evt.native.preventDefault && evt.native.preventDefault();
+                e.preventDefault();
             }
-        } else if ((type === 'mousemove' || type === 'touchmove') && isDragging) {
-            const xScale = ch.scales.x;
-            const yScale = ch.scales.y;
-
-            let newAge = Math.round(xScale.getValueForPixel(evt.x));
-            let newVal = Math.round(yScale.getValueForPixel(evt.y));
-
-            // Clamp values
-            newAge = Math.max(0, Math.min(AppState.userInfo.age, newAge));
-            newVal = Math.max(-100, Math.min(100, newVal));
-
-            // Update ALL datasets at this point index (all 3 categories share age)
-            AppState.graphData.points[dragPointIdx].age = newAge;
-            const fields = ['physical', 'spiritual', 'emotional'];
-            AppState.graphData.points[dragPointIdx][fields[dragDatasetIdx]] = newVal;
-
-            // Re-sort and rebuild
-            rebuildChartData();
-            ch.update('none');
-
-            evt.native && evt.native.preventDefault && evt.native.preventDefault();
-        } else if ((type === 'mouseup' || type === 'touchend') && isDragging) {
-            isDragging = false;
-            dragDatasetIdx = -1;
-            dragPointIdx = -1;
-            canvas.style.cursor = 'default';
-            sortPoints();
-            rebuildChartData();
-            ch.update('none');
-            populateAgeSelect();
-            updatePointControls();
         }
-    }
 
-    function findNearestPoint(ch, evt) {
-        const elements = ch.getElementsAtEventForMode(evt, 'nearest', { intersect: true, axis: 'xy' }, false);
-        if (elements.length > 0) {
-            return elements[0];
+        function onMove(e) {
+            const pos = getPos(e);
+
+            if (isDragging && !longPressTriggered) {
+                // Cancel long-press if user moved (it's a drag)
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+
+                e.preventDefault();
+
+                const { age: newAge, val: newVal } = posToChartValues(pos);
+
+                AppState.graphData.points[dragPointIdx].age = newAge;
+                const fields = ['physical', 'spiritual', 'emotional'];
+                AppState.graphData.points[dragPointIdx][fields[dragDatasetIdx]] = newVal;
+
+                rebuildChartData();
+                ch.update('none');
+            } else if (!isDragging) {
+                const hit = findHit(pos);
+                canvas.style.cursor = hit ? 'grab' : 'default';
+            }
         }
-        return null;
+
+        function onEnd(e) {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+            if (longPressTriggered) {
+                longPressTriggered = false;
+                isDragging = false;
+                return;
+            }
+            if (isDragging) {
+                isDragging = false;
+                dragDatasetIdx = -1;
+                dragPointIdx = -1;
+                canvas.style.cursor = 'default';
+                sortPoints();
+                rebuildChartData();
+                ch.update('none');
+                populateAgeSelect();
+                updatePointControls();
+            }
+        }
+
+        // ── Double-click/Double-tap → Add point on empty space ──
+        function onDblClick(e) {
+            const pos = getPos(e);
+            if (!isInChartArea(pos)) return;
+
+            const hit = findHit(pos);
+            if (hit) return; // Don't add if clicking on existing point
+
+            const { age } = posToChartValues(pos);
+            addPoint(age, 0, 0, 0);
+        }
+
+        // ── Right-click on vertex → Delete (PC) ──
+        function onContextMenu(e) {
+            const pos = getPos(e);
+            const hit = findHit(pos);
+            if (hit && isInChartArea(pos)) {
+                e.preventDefault();
+                const pt = AppState.graphData.points[hit.index];
+                if (pt) {
+                    showDeleteConfirm(pt.age, e);
+                }
+            }
+        }
+
+        // ── Delete confirm popup ──
+        function showDeleteConfirm(age, e) {
+            // Remove any existing popup
+            const existing = document.querySelector('.chart-confirm-popup');
+            if (existing) existing.remove();
+
+            const pt = AppState.graphData.points.find(p => p.age === age);
+            if (!pt) return;
+
+            // Don't allow if only 2 points
+            if (AppState.graphData.points.length <= 2) {
+                showToast('⚠️ 최소 2개의 꼭지점이 필요합니다');
+                return;
+            }
+
+            const popup = document.createElement('div');
+            popup.className = 'chart-confirm-popup';
+            popup.innerHTML = `
+                <div class="confirm-content">
+                    <p>${age}세 꼭지점을 삭제할까요?</p>
+                    <div class="confirm-buttons">
+                        <button class="confirm-yes">🗑️ 삭제</button>
+                        <button class="confirm-no">취소</button>
+                    </div>
+                </div>
+            `;
+
+            // Position near the event
+            const rect = canvas.getBoundingClientRect();
+            let popX, popY;
+            if (e.touches && e.touches.length > 0) {
+                popX = e.touches[0].clientX;
+                popY = e.touches[0].clientY;
+            } else if (e.changedTouches && e.changedTouches.length > 0) {
+                popX = e.changedTouches[0].clientX;
+                popY = e.changedTouches[0].clientY;
+            } else {
+                popX = e.clientX;
+                popY = e.clientY;
+            }
+
+            popup.style.left = `${popX}px`;
+            popup.style.top = `${popY - 60}px`;
+
+            document.body.appendChild(popup);
+
+            // Animate in
+            requestAnimationFrame(() => popup.classList.add('show'));
+
+            popup.querySelector('.confirm-yes').addEventListener('click', () => {
+                removePoint(age);
+                popup.remove();
+            });
+
+            popup.querySelector('.confirm-no').addEventListener('click', () => {
+                popup.remove();
+            });
+
+            // Auto-dismiss after 5s
+            setTimeout(() => { if (popup.parentNode) popup.remove(); }, 5000);
+
+            // Dismiss on outside click
+            const dismissHandler = (ev) => {
+                if (!popup.contains(ev.target)) {
+                    popup.remove();
+                    document.removeEventListener('click', dismissHandler);
+                    document.removeEventListener('touchstart', dismissHandler);
+                }
+            };
+            setTimeout(() => {
+                document.addEventListener('click', dismissHandler);
+                document.addEventListener('touchstart', dismissHandler);
+            }, 100);
+        }
+
+        // Mouse events
+        canvas.addEventListener('mousedown', onStart);
+        canvas.addEventListener('mousemove', onMove);
+        canvas.addEventListener('mouseup', onEnd);
+        canvas.addEventListener('mouseleave', onEnd);
+        canvas.addEventListener('dblclick', onDblClick);
+        canvas.addEventListener('contextmenu', onContextMenu);
+
+        // Touch events (passive: false to allow preventDefault)
+        canvas.addEventListener('touchstart', onStart, { passive: false });
+        canvas.addEventListener('touchmove', onMove, { passive: false });
+        canvas.addEventListener('touchend', onEnd);
+        canvas.addEventListener('touchcancel', onEnd);
+
+        // Cleanup function for re-initialization
+        canvas._dragCleanup = () => {
+            canvas.removeEventListener('mousedown', onStart);
+            canvas.removeEventListener('mousemove', onMove);
+            canvas.removeEventListener('mouseup', onEnd);
+            canvas.removeEventListener('mouseleave', onEnd);
+            canvas.removeEventListener('dblclick', onDblClick);
+            canvas.removeEventListener('contextmenu', onContextMenu);
+            canvas.removeEventListener('touchstart', onStart);
+            canvas.removeEventListener('touchmove', onMove);
+            canvas.removeEventListener('touchend', onEnd);
+            canvas.removeEventListener('touchcancel', onEnd);
+        };
     }
 
     function rebuildChartData() {

@@ -741,6 +741,106 @@ input[type="range"]::-webkit-slider-thumb:active {
     margin: 0;
 }
 
+/* ===== CHART CANVAS DRAG ===== */
+#life-chart {
+    touch-action: none; /* Prevent browser scroll during touch drag */
+    cursor: default;
+}
+
+/* ===== CHART CONFIRM POPUP ===== */
+.chart-confirm-popup {
+    position: fixed;
+    z-index: 10000;
+    transform: translate(-50%, 0) scale(0.8);
+    opacity: 0;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+.chart-confirm-popup.show {
+    transform: translate(-50%, 0) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.confirm-content {
+    background: rgba(15, 15, 30, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 14px;
+    padding: 16px 20px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(99, 102, 241, 0.15);
+    text-align: center;
+    min-width: 180px;
+}
+
+.confirm-content p {
+    margin: 0 0 12px 0;
+    color: #e8e8f0;
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.confirm-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.confirm-yes,
+.confirm-no {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    font-family: var(--font-family);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.confirm-yes {
+    background: rgba(239, 68, 68, 0.85);
+    color: #fff;
+}
+
+.confirm-yes:hover {
+    background: rgba(239, 68, 68, 1);
+    transform: scale(1.05);
+}
+
+.confirm-no {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ccc;
+}
+
+.confirm-no:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+[data-theme="light"] .confirm-content {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(99, 102, 241, 0.2);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .confirm-content p {
+    color: #1e1e2e;
+}
+
+[data-theme="light"] .confirm-no {
+    background: rgba(0, 0, 0, 0.08);
+    color: #555;
+}
+
+[data-theme="light"] .confirm-no:hover {
+    background: rgba(0, 0, 0, 0.15);
+    color: #333;
+}
+
 /* ===== FOOTER ===== */
 footer {
     text-align: center;
