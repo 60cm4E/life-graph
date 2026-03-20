@@ -1,5 +1,7 @@
 /* ===================================================
    storage.js — Save / Load / Export / Import
+   Supports migration from old shared-age format to
+   new independent per-category format.
    =================================================== */
 
 const Storage = (() => {
@@ -47,20 +49,34 @@ const Storage = (() => {
         }
         AppState.userInfo = data.userInfo;
 
-        // Migrate old format (labels/physical/spiritual/emotional arrays) to new format (points)
-        if (data.graphData.labels && !data.graphData.points) {
-            const points = [];
+        // Migrate: old format with shared "points" array → new per-category format
+        if (data.graphData.points && Array.isArray(data.graphData.points)) {
+            // Old format: { points: [{ age, physical, spiritual, emotional }] }
+            const physical = [];
+            const spiritual = [];
+            const emotional = [];
+            data.graphData.points.forEach(p => {
+                physical.push({ age: p.age, value: p.physical || 0 });
+                spiritual.push({ age: p.age, value: p.spiritual || 0 });
+                emotional.push({ age: p.age, value: p.emotional || 0 });
+            });
+            AppState.graphData = { physical, spiritual, emotional };
+        } else if (data.graphData.labels && !data.graphData.physical) {
+            // Very old format: { labels: [], physical: [], spiritual: [], emotional: [] } (arrays of numbers)
+            const physical = [];
+            const spiritual = [];
+            const emotional = [];
             for (let i = 0; i < data.graphData.labels.length; i++) {
-                points.push({
-                    age: data.graphData.labels[i],
-                    physical: data.graphData.physical[i] || 0,
-                    spiritual: data.graphData.spiritual[i] || 0,
-                    emotional: data.graphData.emotional[i] || 0
-                });
+                physical.push({ age: data.graphData.labels[i], value: data.graphData.physical[i] || 0 });
+                spiritual.push({ age: data.graphData.labels[i], value: data.graphData.spiritual[i] || 0 });
+                emotional.push({ age: data.graphData.labels[i], value: data.graphData.emotional[i] || 0 });
             }
-            AppState.graphData = { points };
-        } else {
+            AppState.graphData = { physical, spiritual, emotional };
+        } else if (data.graphData.physical && Array.isArray(data.graphData.physical)) {
+            // New format: { physical: [{age, value}], spiritual: [{age, value}], emotional: [{age, value}] }
             AppState.graphData = data.graphData;
+        } else {
+            AppState.graphData = {};
         }
 
         AppState.events = data.events || [];
@@ -91,7 +107,6 @@ const Storage = (() => {
             try {
                 const data = JSON.parse(e.target.result);
                 if (applyData(data)) {
-                    // Rebuild chart and events
                     LifeChart.create(AppState.userInfo.age);
                     Events.renderTimeline();
                     Events.updateChartAnnotations();

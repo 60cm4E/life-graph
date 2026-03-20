@@ -5,7 +5,7 @@
 // ===== Global State =====
 const AppState = {
     userInfo: { name: '', age: 0 },
-    graphData: { points: [] },
+    graphData: {},  // { physical: [{age,value}], spiritual: [{age,value}], emotional: [{age,value}] }
     events: []
 };
 
@@ -60,7 +60,7 @@ function initUserForm() {
         }
 
         AppState.userInfo = { name, age };
-        AppState.graphData = { points: [] };
+        AppState.graphData = {};
         AppState.events = [];
 
         document.getElementById('chart-user-name').textContent = name;
@@ -69,7 +69,6 @@ function initUserForm() {
         showSections();
         showToast(`✨ ${name}님의 인생그래프가 생성되었습니다!`);
 
-        // Scroll to chart
         document.getElementById('chart-section').scrollIntoView({ behavior: 'smooth' });
     });
 }
@@ -94,47 +93,56 @@ function initInputModeTabs() {
     });
 }
 
-// ===== Form Input =====
+// ===== Form Input (per category) =====
 function initFormInput() {
+    const catSelect = document.getElementById('form-cat-select');
     const ageSelect = document.getElementById('form-age-select');
-    const sliderPhys = document.getElementById('slider-physical');
-    const sliderSpir = document.getElementById('slider-spiritual');
-    const sliderEmot = document.getElementById('slider-emotional');
-    const valPhys = document.getElementById('val-physical');
-    const valSpir = document.getElementById('val-spiritual');
-    const valEmot = document.getElementById('val-emotional');
+    const slider = document.getElementById('slider-value');
+    const valDisplay = document.getElementById('val-value');
 
-    // Update display values
-    sliderPhys.addEventListener('input', () => { valPhys.textContent = sliderPhys.value; });
-    sliderSpir.addEventListener('input', () => { valSpir.textContent = sliderSpir.value; });
-    sliderEmot.addEventListener('input', () => { valEmot.textContent = sliderEmot.value; });
+    // Update display value
+    slider.addEventListener('input', () => { valDisplay.textContent = slider.value; });
 
-    // When age changes, load current values
+    // When category or age changes, load current value
+    catSelect.addEventListener('change', updateFormSliders);
     ageSelect.addEventListener('change', updateFormSliders);
 
     // Apply button
     document.getElementById('btn-apply-form').addEventListener('click', () => {
-        const idx = parseInt(ageSelect.value);
-        const p = parseInt(sliderPhys.value);
-        const s = parseInt(sliderSpir.value);
-        const e = parseInt(sliderEmot.value);
-        LifeChart.updatePointFromForm(idx, p, s, e);
-        const point = AppState.graphData.points[idx];
-        if (point) showToast(`✅ ${point.age}세 값 적용됨`);
+        const cat = catSelect.value;
+        const ptIdx = parseInt(ageSelect.value);
+        const val = parseInt(slider.value);
+        LifeChart.updatePointFromForm(cat, ptIdx, val);
+        const pts = AppState.graphData[cat];
+        if (pts && pts[ptIdx]) {
+            showToast(`✅ ${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]} ${pts[ptIdx].age}세 = ${val > 0 ? '+' : ''}${val}`);
+        }
     });
 }
 
 function updateFormSliders() {
-    const idx = parseInt(document.getElementById('form-age-select').value);
-    if (isNaN(idx) || !AppState.graphData.points[idx]) return;
+    const cat = document.getElementById('form-cat-select').value;
+    const ageSelect = document.getElementById('form-age-select');
 
-    const pt = AppState.graphData.points[idx];
-    document.getElementById('slider-physical').value = pt.physical;
-    document.getElementById('slider-spiritual').value = pt.spiritual;
-    document.getElementById('slider-emotional').value = pt.emotional;
-    document.getElementById('val-physical').textContent = pt.physical;
-    document.getElementById('val-spiritual').textContent = pt.spiritual;
-    document.getElementById('val-emotional').textContent = pt.emotional;
+    // Populate age select for current category
+    ageSelect.innerHTML = '';
+    const pts = AppState.graphData[cat] || [];
+    pts.forEach((p, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${p.age}세 (${p.value > 0 ? '+' : ''}${p.value})`;
+        ageSelect.appendChild(opt);
+    });
+
+    // Load current value
+    const ptIdx = parseInt(ageSelect.value);
+    if (!isNaN(ptIdx) && pts[ptIdx]) {
+        document.getElementById('slider-value').value = pts[ptIdx].value;
+        document.getElementById('val-value').textContent = pts[ptIdx].value;
+    } else {
+        document.getElementById('slider-value').value = 0;
+        document.getElementById('val-value').textContent = '0';
+    }
 }
 
 // ===== Add Point =====
@@ -148,11 +156,10 @@ function initAddPoint() {
             return;
         }
 
-        LifeChart.addPoint(age, 0, 0, 0);
+        LifeChart.addPointAll(age);
         ageInput.value = '';
     });
 
-    // Also allow Enter key
     document.getElementById('add-point-age').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -176,7 +183,6 @@ function initEventForm() {
 
         Events.addEvent(age, title, memo);
 
-        // Clear form
         document.getElementById('event-title').value = '';
         document.getElementById('event-memo').value = '';
     });

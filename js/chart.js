@@ -1,8 +1,13 @@
 /* ===================================================
-   chart.js — Scatter-Line Chart with flexible data points
-   Supports: drag editing (both axes), add/remove points
+   chart.js — Scatter-Line Chart with independent data points
+   Each category (physical/spiritual/emotional) has its own
+   point array with independent ages and values.
    PC: mouse drag, Mobile: touch & drag
    =================================================== */
+
+const CATEGORIES = ['physical', 'spiritual', 'emotional'];
+const CATEGORY_LABELS = { physical: '신체', spiritual: '영적', emotional: '정서' };
+const CATEGORY_ICONS = { physical: '🏃', spiritual: '🙏', emotional: '💛' };
 
 const LifeChart = (() => {
     let chart = null;
@@ -25,22 +30,23 @@ const LifeChart = (() => {
         };
     }
 
+    // ===== Initialize empty data per category =====
+    function initData(maxAge) {
+        if (!AppState.graphData.physical) {
+            AppState.graphData = {
+                physical: [{ age: 0, value: 0 }, { age: maxAge, value: 0 }],
+                spiritual: [{ age: 0, value: 0 }, { age: maxAge, value: 0 }],
+                emotional: [{ age: 0, value: 0 }, { age: maxAge, value: 0 }],
+            };
+        }
+    }
+
     function create(maxAge) {
         const ctx = document.getElementById('life-chart').getContext('2d');
         const colors = getThemeColors();
 
-        // Initialize data if empty — start with just 0 and maxAge
-        if (!AppState.graphData.points || AppState.graphData.points.length === 0) {
-            AppState.graphData = {
-                points: [
-                    { age: 0, physical: 0, spiritual: 0, emotional: 0 },
-                    { age: maxAge, physical: 0, spiritual: 0, emotional: 0 }
-                ]
-            };
-        }
-
-        // Sort points by age
-        sortPoints();
+        initData(maxAge);
+        sortAllPoints();
 
         if (chart) chart.destroy();
 
@@ -50,7 +56,7 @@ const LifeChart = (() => {
                 datasets: [
                     {
                         label: '🏃 신체',
-                        data: pointsToXY('physical'),
+                        data: toXY('physical'),
                         borderColor: colors.physical,
                         backgroundColor: colors.physicalBg,
                         fill: false,
@@ -65,7 +71,7 @@ const LifeChart = (() => {
                     },
                     {
                         label: '🙏 영적',
-                        data: pointsToXY('spiritual'),
+                        data: toXY('spiritual'),
                         borderColor: colors.spiritual,
                         backgroundColor: colors.spiritualBg,
                         fill: false,
@@ -80,7 +86,7 @@ const LifeChart = (() => {
                     },
                     {
                         label: '💛 정서',
-                        data: pointsToXY('emotional'),
+                        data: toXY('emotional'),
                         borderColor: colors.emotional,
                         backgroundColor: colors.emotionalBg,
                         fill: false,
@@ -185,31 +191,35 @@ const LifeChart = (() => {
             },
         });
 
-        // Bind direct canvas event listeners for drag
         bindCanvasDrag(chart);
-
-        // Populate age select for form input
-        populateAgeSelect();
-        // Highlight controls
         updatePointControls();
 
         return chart;
     }
 
-    // ===== Convert AppState points to {x, y} arrays =====
-    function pointsToXY(field) {
-        return AppState.graphData.points.map(p => ({ x: p.age, y: p[field] }));
+    // ===== Data helpers =====
+    function toXY(cat) {
+        return (AppState.graphData[cat] || []).map(p => ({ x: p.age, y: p.value }));
     }
 
-    function sortPoints() {
-        AppState.graphData.points.sort((a, b) => a.age - b.age);
+    function sortAllPoints() {
+        CATEGORIES.forEach(cat => {
+            if (AppState.graphData[cat]) {
+                AppState.graphData[cat].sort((a, b) => a.age - b.age);
+            }
+        });
+    }
+
+    function rebuildChartData() {
+        if (!chart) return;
+        chart.data.datasets[0].data = toXY('physical');
+        chart.data.datasets[1].data = toXY('spiritual');
+        chart.data.datasets[2].data = toXY('emotional');
     }
 
     // ===== Direct Canvas Drag + Add/Remove Gestures =====
     function bindCanvasDrag(ch) {
         const canvas = ch.canvas;
-
-        // Prevent any existing listeners (in case of re-create)
         canvas._dragCleanup && canvas._dragCleanup();
 
         let longPressTimer = null;
@@ -243,10 +253,8 @@ const LifeChart = (() => {
         }
 
         function posToChartValues(pos) {
-            const xScale = ch.scales.x;
-            const yScale = ch.scales.y;
-            let age = Math.round(xScale.getValueForPixel(pos.x));
-            let val = Math.round(yScale.getValueForPixel(pos.y));
+            let age = Math.round(ch.scales.x.getValueForPixel(pos.x));
+            let val = Math.round(ch.scales.y.getValueForPixel(pos.y));
             age = Math.max(0, Math.min(AppState.userInfo.age, age));
             val = Math.max(-100, Math.min(100, val));
             return { age, val };
@@ -257,20 +265,59 @@ const LifeChart = (() => {
             return pos.x >= area.left && pos.x <= area.right && pos.y >= area.top && pos.y <= area.bottom;
         }
 
+        // Find the nearest line (dataset) to a position
+        function findNearestDataset(pos) {
+            let minDist = Infinity;
+            let nearestIdx = 0;
+            for (let dsIdx = 0; dsIdx < ch.data.datasets.length; dsIdx++) {
+                const meta = ch.getDatasetMeta(dsIdx);
+                for (let ptIdx = 0; ptIdx < meta.data.length - 1; ptIdx++) {
+                    const p1 = meta.data[ptIdx];
+                    const p2 = meta.data[ptIdx + 1];
+                    const d = distToSegment(pos, p1, p2);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearestIdx = dsIdx;
+                    }
+                }
+                // Also check distance to each point
+                for (let ptIdx = 0; ptIdx < meta.data.length; ptIdx++) {
+                    const el = meta.data[ptIdx];
+                    const dx = pos.x - el.x;
+                    const dy = pos.y - el.y;
+                    const d = Math.sqrt(dx * dx + dy * dy);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearestIdx = dsIdx;
+                    }
+                }
+            }
+            return nearestIdx;
+        }
+
+        function distToSegment(p, v, w) {
+            const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
+            if (l2 === 0) return Math.sqrt((p.x - v.x) ** 2 + (p.y - v.y) ** 2);
+            let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            const proj = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
+            return Math.sqrt((p.x - proj.x) ** 2 + (p.y - proj.y) ** 2);
+        }
+
         // ── Drag ──
         function onStart(e) {
             longPressTriggered = false;
             const pos = getPos(e);
             const hit = findHit(pos);
 
-            // Start long-press timer for touch (delete gesture)
             if (e.touches && hit) {
+                const hitCat = CATEGORIES[hit.datasetIndex];
+                const hitPt = AppState.graphData[hitCat][hit.index];
                 longPressTimer = setTimeout(() => {
                     longPressTriggered = true;
                     isDragging = false;
-                    const pt = AppState.graphData.points[hit.index];
-                    if (pt) {
-                        showDeleteConfirm(pt.age, e);
+                    if (hitPt) {
+                        showDeleteConfirm(hit.datasetIndex, hit.index, e);
                     }
                 }, 500);
             }
@@ -288,7 +335,6 @@ const LifeChart = (() => {
             const pos = getPos(e);
 
             if (isDragging && !longPressTriggered) {
-                // Cancel long-press if user moved (it's a drag)
                 if (longPressTimer) {
                     clearTimeout(longPressTimer);
                     longPressTimer = null;
@@ -297,10 +343,11 @@ const LifeChart = (() => {
                 e.preventDefault();
 
                 const { age: newAge, val: newVal } = posToChartValues(pos);
+                const cat = CATEGORIES[dragDatasetIdx];
 
-                AppState.graphData.points[dragPointIdx].age = newAge;
-                const fields = ['physical', 'spiritual', 'emotional'];
-                AppState.graphData.points[dragPointIdx][fields[dragDatasetIdx]] = newVal;
+                // Update only this category's point
+                AppState.graphData[cat][dragPointIdx].age = newAge;
+                AppState.graphData[cat][dragPointIdx].value = newVal;
 
                 rebuildChartData();
                 ch.update('none');
@@ -321,28 +368,43 @@ const LifeChart = (() => {
                 return;
             }
             if (isDragging) {
+                const cat = CATEGORIES[dragDatasetIdx];
                 isDragging = false;
                 dragDatasetIdx = -1;
                 dragPointIdx = -1;
                 canvas.style.cursor = 'default';
-                sortPoints();
+                AppState.graphData[cat].sort((a, b) => a.age - b.age);
                 rebuildChartData();
                 ch.update('none');
-                populateAgeSelect();
                 updatePointControls();
             }
         }
 
-        // ── Double-click/Double-tap → Add point on empty space ──
+        // ── Double-click/Double-tap → Add point on nearest line ──
         function onDblClick(e) {
             const pos = getPos(e);
             if (!isInChartArea(pos)) return;
 
             const hit = findHit(pos);
-            if (hit) return; // Don't add if clicking on existing point
+            if (hit) return;
 
-            const { age } = posToChartValues(pos);
-            addPoint(age, 0, 0, 0);
+            const { age, val } = posToChartValues(pos);
+            const dsIdx = findNearestDataset(pos);
+            const cat = CATEGORIES[dsIdx];
+
+            // Check for duplicate age in this category
+            const existing = AppState.graphData[cat].find(p => p.age === age);
+            if (existing) {
+                existing.value = val;
+                showToast(`✏️ ${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]} ${age}세 업데이트됨`);
+            } else {
+                AppState.graphData[cat].push({ age, value: val });
+                AppState.graphData[cat].sort((a, b) => a.age - b.age);
+                showToast(`📍 ${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]} ${age}세 추가됨`);
+            }
+            rebuildChartData();
+            if (chart) chart.update();
+            updatePointControls();
         }
 
         // ── Right-click on vertex → Delete (PC) ──
@@ -351,33 +413,30 @@ const LifeChart = (() => {
             const hit = findHit(pos);
             if (hit && isInChartArea(pos)) {
                 e.preventDefault();
-                const pt = AppState.graphData.points[hit.index];
-                if (pt) {
-                    showDeleteConfirm(pt.age, e);
-                }
+                showDeleteConfirm(hit.datasetIndex, hit.index, e);
             }
         }
 
         // ── Delete confirm popup ──
-        function showDeleteConfirm(age, e) {
-            // Remove any existing popup
+        function showDeleteConfirm(dsIdx, ptIdx, e) {
             const existing = document.querySelector('.chart-confirm-popup');
             if (existing) existing.remove();
 
-            const pt = AppState.graphData.points.find(p => p.age === age);
-            if (!pt) return;
+            const cat = CATEGORIES[dsIdx];
+            const pts = AppState.graphData[cat];
+            if (!pts || ptIdx >= pts.length) return;
 
-            // Don't allow if only 2 points
-            if (AppState.graphData.points.length <= 2) {
-                showToast('⚠️ 최소 2개의 꼭지점이 필요합니다');
+            if (pts.length <= 2) {
+                showToast(`⚠️ ${CATEGORY_LABELS[cat]} 최소 2개의 꼭지점이 필요합니다`);
                 return;
             }
 
+            const pt = pts[ptIdx];
             const popup = document.createElement('div');
             popup.className = 'chart-confirm-popup';
             popup.innerHTML = `
                 <div class="confirm-content">
-                    <p>${age}세 꼭지점을 삭제할까요?</p>
+                    <p>${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]} ${pt.age}세 삭제?</p>
                     <div class="confirm-buttons">
                         <button class="confirm-yes">🗑️ 삭제</button>
                         <button class="confirm-no">취소</button>
@@ -385,8 +444,6 @@ const LifeChart = (() => {
                 </div>
             `;
 
-            // Position near the event
-            const rect = canvas.getBoundingClientRect();
             let popX, popY;
             if (e.touches && e.touches.length > 0) {
                 popX = e.touches[0].clientX;
@@ -401,14 +458,11 @@ const LifeChart = (() => {
 
             popup.style.left = `${popX}px`;
             popup.style.top = `${popY - 60}px`;
-
             document.body.appendChild(popup);
-
-            // Animate in
             requestAnimationFrame(() => popup.classList.add('show'));
 
             popup.querySelector('.confirm-yes').addEventListener('click', () => {
-                removePoint(age);
+                removePoint(cat, ptIdx);
                 popup.remove();
             });
 
@@ -416,10 +470,8 @@ const LifeChart = (() => {
                 popup.remove();
             });
 
-            // Auto-dismiss after 5s
             setTimeout(() => { if (popup.parentNode) popup.remove(); }, 5000);
 
-            // Dismiss on outside click
             const dismissHandler = (ev) => {
                 if (!popup.contains(ev.target)) {
                     popup.remove();
@@ -441,13 +493,12 @@ const LifeChart = (() => {
         canvas.addEventListener('dblclick', onDblClick);
         canvas.addEventListener('contextmenu', onContextMenu);
 
-        // Touch events (passive: false to allow preventDefault)
+        // Touch events
         canvas.addEventListener('touchstart', onStart, { passive: false });
         canvas.addEventListener('touchmove', onMove, { passive: false });
         canvas.addEventListener('touchend', onEnd);
         canvas.addEventListener('touchcancel', onEnd);
 
-        // Cleanup function for re-initialization
         canvas._dragCleanup = () => {
             canvas.removeEventListener('mousedown', onStart);
             canvas.removeEventListener('mousemove', onMove);
@@ -462,111 +513,95 @@ const LifeChart = (() => {
         };
     }
 
-    function rebuildChartData() {
-        if (!chart) return;
-        chart.data.datasets[0].data = pointsToXY('physical');
-        chart.data.datasets[1].data = pointsToXY('spiritual');
-        chart.data.datasets[2].data = pointsToXY('emotional');
-    }
+    // ===== Add / Remove Points (per category) =====
+    function addPoint(cat, age, value) {
+        if (!AppState.graphData[cat]) return;
 
-    // ===== Add / Remove Points =====
-    function addPoint(age, physical, spiritual, emotional) {
-        // Check for duplicate age
-        const existing = AppState.graphData.points.find(p => p.age === age);
+        const existing = AppState.graphData[cat].find(p => p.age === age);
         if (existing) {
-            existing.physical = physical;
-            existing.spiritual = spiritual;
-            existing.emotional = emotional;
-            showToast(`✏️ ${age}세 데이터 업데이트됨`);
+            existing.value = value;
+            showToast(`✏️ ${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]} ${age}세 업데이트됨`);
         } else {
-            AppState.graphData.points.push({ age, physical, spiritual, emotional });
-            showToast(`📍 ${age}세 꼭지점 추가됨`);
+            AppState.graphData[cat].push({ age, value });
+            AppState.graphData[cat].sort((a, b) => a.age - b.age);
+            showToast(`📍 ${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]} ${age}세 추가됨`);
         }
-        sortPoints();
         rebuildChartData();
         if (chart) chart.update();
-        populateAgeSelect();
         updatePointControls();
     }
 
-    function removePoint(age) {
-        const idx = AppState.graphData.points.findIndex(p => p.age === age);
-        if (idx === -1) return;
-        // Don't allow removing if only 2 points left
-        if (AppState.graphData.points.length <= 2) {
-            showToast('⚠️ 최소 2개의 꼭지점이 필요합니다');
+    // Add a point to ALL categories at once (from toolbar)
+    function addPointAll(age) {
+        CATEGORIES.forEach(cat => {
+            const existing = AppState.graphData[cat].find(p => p.age === age);
+            if (!existing) {
+                AppState.graphData[cat].push({ age, value: 0 });
+                AppState.graphData[cat].sort((a, b) => a.age - b.age);
+            }
+        });
+        rebuildChartData();
+        if (chart) chart.update();
+        updatePointControls();
+        showToast(`📍 ${age}세 꼭지점 추가됨 (전체)`);
+    }
+
+    function removePoint(cat, ptIdx) {
+        const pts = AppState.graphData[cat];
+        if (!pts || ptIdx < 0 || ptIdx >= pts.length) return;
+        if (pts.length <= 2) {
+            showToast(`⚠️ ${CATEGORY_LABELS[cat]} 최소 2개의 꼭지점이 필요합니다`);
             return;
         }
-        AppState.graphData.points.splice(idx, 1);
+        const removed = pts.splice(ptIdx, 1)[0];
         rebuildChartData();
         if (chart) chart.update();
-        populateAgeSelect();
         updatePointControls();
-        showToast(`🗑️ ${age}세 꼭지점 삭제됨`);
+        showToast(`🗑️ ${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]} ${removed.age}세 삭제됨`);
     }
 
-    // ===== Update Form Controls =====
-    function populateAgeSelect() {
-        const select = document.getElementById('form-age-select');
-        if (!select) return;
-        select.innerHTML = '';
-        AppState.graphData.points.forEach((p, i) => {
-            const opt = document.createElement('option');
-            opt.value = i;
-            opt.textContent = `${p.age}세`;
-            select.appendChild(opt);
-        });
-    }
-
+    // ===== Update Point Controls (chips) =====
     function updatePointControls() {
         const container = document.getElementById('point-list-container');
         if (!container) return;
 
-        container.innerHTML = AppState.graphData.points.map((p, i) => `
-            <div class="point-chip" data-age="${p.age}">
-                <span class="point-chip-age">${p.age}세</span>
-                <span class="point-chip-vals">
-                    <span style="color:var(--color-physical)">신${p.physical > 0 ? '+' : ''}${p.physical}</span>
-                    <span style="color:var(--color-spiritual)">영${p.spiritual > 0 ? '+' : ''}${p.spiritual}</span>
-                    <span style="color:var(--color-emotional)">정${p.emotional > 0 ? '+' : ''}${p.emotional}</span>
-                </span>
-                <button class="point-chip-delete" data-age="${p.age}" title="삭제">✕</button>
-            </div>
-        `).join('');
-
-        // Delete buttons
-        container.querySelectorAll('.point-chip-delete').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                removePoint(parseInt(btn.dataset.age));
+        let html = '';
+        CATEGORIES.forEach((cat, dsIdx) => {
+            const pts = AppState.graphData[cat] || [];
+            const colorVar = `--color-${cat}`;
+            pts.forEach((p, i) => {
+                const v = p.value > 0 ? `+${p.value}` : p.value;
+                html += `
+                    <div class="point-chip" data-cat="${cat}" data-idx="${i}" style="border-color:var(${colorVar})">
+                        <span class="point-chip-icon">${CATEGORY_ICONS[cat]}</span>
+                        <span class="point-chip-age">${p.age}세</span>
+                        <span class="point-chip-val" style="color:var(${colorVar})">${v}</span>
+                        <button class="point-chip-delete" data-cat="${cat}" data-idx="${i}" title="삭제">✕</button>
+                    </div>
+                `;
             });
         });
 
-        // Click to select in form
-        container.querySelectorAll('.point-chip').forEach(chip => {
-            chip.addEventListener('click', (e) => {
-                if (e.target.classList.contains('point-chip-delete')) return;
-                const age = parseInt(chip.dataset.age);
-                const idx = AppState.graphData.points.findIndex(p => p.age === age);
-                const select = document.getElementById('form-age-select');
-                if (select && idx >= 0) {
-                    select.value = idx;
-                    select.dispatchEvent(new Event('change'));
-                }
+        container.innerHTML = html;
+
+        container.querySelectorAll('.point-chip-delete').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removePoint(btn.dataset.cat, parseInt(btn.dataset.idx));
             });
         });
     }
 
-    function updatePointFromForm(ageIndex, physical, spiritual, emotional) {
-        if (!chart || ageIndex < 0 || ageIndex >= AppState.graphData.points.length) return;
-        AppState.graphData.points[ageIndex].physical = physical;
-        AppState.graphData.points[ageIndex].spiritual = spiritual;
-        AppState.graphData.points[ageIndex].emotional = emotional;
+    // ===== Form support =====
+    function updatePointFromForm(cat, ptIdx, value) {
+        if (!chart || !AppState.graphData[cat] || ptIdx < 0 || ptIdx >= AppState.graphData[cat].length) return;
+        AppState.graphData[cat][ptIdx].value = value;
         rebuildChartData();
         chart.update('none');
         updatePointControls();
     }
 
+    // ===== Theme =====
     function updateTheme() {
         if (!chart) return;
         const colors = getThemeColors();
@@ -604,8 +639,8 @@ const LifeChart = (() => {
     }
 
     return {
-        create, addPoint, removePoint, updatePointFromForm,
+        create, addPoint, addPointAll, removePoint, updatePointFromForm,
         updateTheme, setAnnotations, getChart,
-        rebuildChartData, populateAgeSelect, updatePointControls
+        rebuildChartData, updatePointControls
     };
 })();
